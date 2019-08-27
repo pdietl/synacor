@@ -9,10 +9,14 @@
 #define MAX_ADDR MAX_INT
 #define REG_NUM  8
 
+#define DEBUG
+
 #ifdef DEBUG
-    #define dprintf(f, ...) printf("\n>>> DEBUG: "); printf(f, __VA_ARGS__)
+    #define dprintf(f, ...) printf("*** DEBUG (%s): " f, __func__, ## __VA_ARGS__)
+    #define dpf() dprintf("\n")
 #else
     #define dprintf(f, ...)
+    #define dpf()
 #endif
 
 uint16_t regs[REG_NUM] = {0};
@@ -26,6 +30,8 @@ void halt(FILE *fp);
 void jmp(FILE *fp);
 void out(FILE *fp);
 void noop(FILE *fp);
+void jt(FILE *fp);
+void jf(FILE *fp);
 
 int main(int argc, char **argv)
 {
@@ -42,6 +48,8 @@ int main(int argc, char **argv)
 
     op_functions[HALT] = halt;
     op_functions[JMP] = jmp;
+    op_functions[JT] = jt;
+    op_functions[JF] = jf;
     op_functions[OUT] = out;
     op_functions[NOOP] = noop;
     
@@ -89,7 +97,7 @@ void execute_file(FILE *fp)
 
 void halt(FILE *fp)
 {
-    puts("*** DEBUG: Halting.");
+    dpf();
     exit(0);
 }
 
@@ -107,12 +115,11 @@ void out(FILE *fp)
         exit(1);
     }
     putchar(ch);
-    dprintf("Calling %s! Character: %c\n", __func__, ch);
 }
 
 void noop(FILE *fp)
 {
-    puts("*** DEBUG: noop");
+    dpf();
 }
 
 long get_file_num_bytes(FILE *fp)
@@ -125,25 +132,61 @@ long get_file_num_bytes(FILE *fp)
     return size;
 }
 
+void check_arg(uint16_t *addr, FILE *fp)
+{
+    if (is_reg(*addr)) {
+        *addr = get_reg_val(*addr);
+    } else if (!is_valid_addr(*addr)) {
+        fprintf(stderr, "ERROR: Address is out of range: %u\n"
+            "Address are from 0 through %u\n", *addr, MAX_ADDR);
+        exit(1);
+    } else if (*addr * 2 >= get_file_num_bytes(fp)) {
+        fprintf(stderr, "Invalid Address! Address is beyond file!\n");
+        exit (1);
+    }
+}
+
 void jmp(FILE *fp)
 {
     uint16_t addr;
-    printf("We are at offset %lu\n", ftell(fp));
     if (readU16(fp, &addr) == -1) {
         fprintf(stderr, "No argument to 'jmp'!");
         exit(1);
     }
-    if (is_reg(addr)) {
-        addr = get_reg_val(addr);
-    } else if (!is_valid_addr(addr)) {
-        fprintf(stderr, "ERROR: Address is out of range: %u\n"
-            "Address are from 0 through %u\n", addr, MAX_ADDR);
-        exit(1);
-    } else if (addr * 2 >= get_file_num_bytes(fp)) {
-        fprintf(stderr, "Invalid JMP! Address is beyond file...\n");
-        exit (1);
-    }
-    printf("JUMPING to %u\n", addr * 2);
+    check_arg(&addr, fp);
     fseek(fp, addr * 2, SEEK_SET);
-    printf("%lu\n", ftell(fp));
+}
+
+void jt(FILE *fp)
+{
+    uint16_t boolean, addr;
+    if (readU16(fp, &boolean) == -1 || readU16(fp, &addr) == -1) {
+        fprintf(stderr, "No arguments to 'jt'!");
+        exit(1);
+    }
+    check_arg(&boolean, fp);
+    check_arg(&addr, fp);
+
+    dprintf("boolean val: '%c'\tjump addr: %u\n", boolean != 0 ? 'T' : 'F', addr);
+    dprintf("current word-wise file offset: %ld\n", ftell(fp) / 2 - 3);
+
+    if (boolean)
+        fseek(fp, addr * 2, SEEK_SET);
+}
+
+void jf(FILE *fp)
+{
+    uint16_t boolean, addr;
+    if (readU16(fp, &boolean) == -1 || readU16(fp, &addr) == -1) {
+        fprintf(stderr, "No arguments to 'jf'!");
+        exit(1);
+    }
+    check_arg(&boolean, fp);
+    check_arg(&addr, fp);
+    
+    dprintf("boolean val: '%c'\tjump addr: %u\n", boolean != 0 ? 'T' : 'F', addr);
+    dprintf("current word-wise file offset: %ld\n", ftell(fp) / 2 - 3);
+
+    if (!boolean)
+        fseek(fp, addr * 2, SEEK_SET);
 }
