@@ -5,6 +5,7 @@
 #include <endian.h>
 #include <inttypes.h>
 #include <ctype.h>
+#include "cmc/stack.h"
 #include "arch.h"
 
 #define MAX_ADDR MAX_INT
@@ -42,7 +43,10 @@
         exit(1); \
     }
 
-uint16_t regs[REG_NUM] = {0};
+STACK_GENERATE(s, stack, /* func modifier */, uint16_t)
+
+static stack *prog_stack;
+static uint16_t regs[REG_NUM] = {0};
 
 void (*op_functions[NUM_OP_CODES])(FILE *) = {0};
 
@@ -51,6 +55,8 @@ void not_implemented(enum opcode);
 
 void halt(FILE *fp);
 void set(FILE *fp);
+void push(FILE *fp);
+void pop(FILE *fp);
 void eq(FILE *fp);
 void jmp(FILE *fp);
 void jt(FILE *fp);
@@ -69,11 +75,19 @@ int main(int argc, char **argv)
     FILE *fp;
 
     if (!(fp = fopen(argv[1], "r"))) {
-        perror("");
+        perror("fopen");
+        abort();
+    }
+
+    if (!(prog_stack = s_new(128))) {
+        perror("stack");
+        abort();
     }
 
     op_functions[HALT] = halt;
     op_functions[SET] = set;
+    op_functions[PUSH] = push;
+    op_functions[POP] = pop;
     op_functions[EQ] = eq;
     op_functions[JMP] = jmp;
     op_functions[JT] = jt;
@@ -81,7 +95,7 @@ int main(int argc, char **argv)
     op_functions[ADD] = add;
     op_functions[OUT] = out;
     op_functions[NOOP] = noop;
-    
+
     execute_file(fp);
 
     return 0;
@@ -193,6 +207,28 @@ void set(FILE *fp)
         val, isprint(val) ? val : '.');
 
     regs[reg - MIN_REG] = val;
+}
+
+void push(FILE *fp)
+{
+    READ1(val);
+    verify_reg_or_int_and_get_val_or_die(&val, fp);
+    s_push(prog_stack, val);
+
+}
+
+void pop(FILE *fp)
+{
+    READ1(dest_reg);
+    verify_reg_or_die(dest_reg);
+
+    if (s_empty(prog_stack)) {
+        fprintf(stderr, "ERROR: Stack underflow!\n");
+        abort();
+    }
+
+    regs[dest_reg - MIN_REG] = s_top(prog_stack);
+    s_pop(prog_stack);
 }
 
 void eq(FILE *fp)
