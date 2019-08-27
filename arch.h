@@ -39,7 +39,7 @@ const char *op_to_string(enum opcode op);
 int addr_to_reg_num(uint16_t addr);
 bool is_valid_int(uint16_t n);
 bool is_reg(uint16_t addr);
-int readU16(FILE *fp, uint16_t *ret);
+int readU16(uint16_t *ret);
 
 /*
 

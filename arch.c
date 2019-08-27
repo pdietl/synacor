@@ -46,15 +46,16 @@ bool is_reg(uint16_t addr)
     return addr >= MIN_REG && addr <= MAX_REG;
 }
 
-int readU16(FILE *fp, uint16_t *ret)
-{
-    uint16_t n;
-    size_t i;
 
-    if ((i = fread(&n, sizeof n, 1, fp)) != 1)
+int readU16(uint16_t *ret)
+{
+    extern uint16_t memory[];
+    extern uint16_t mem_offset;
+
+    if (mem_offset >= MAX_INT)
         return -1;
 
-    *ret = le16toh(n);
+    *ret = le16toh(memory[mem_offset++]);
     return 0;
 }
 
