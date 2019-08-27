@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <endian.h>
 #include <inttypes.h>
+#include <ctype.h>
 #include "arch.h"
 
 #define MAX_ADDR MAX_INT
@@ -27,11 +28,12 @@ void execute_file(FILE *fp);
 void not_implemented(enum opcode);
 
 void halt(FILE *fp);
+void set(FILE *fp);
 void jmp(FILE *fp);
-void out(FILE *fp);
-void noop(FILE *fp);
 void jt(FILE *fp);
 void jf(FILE *fp);
+void out(FILE *fp);
+void noop(FILE *fp);
 
 int main(int argc, char **argv)
 {
@@ -47,6 +49,7 @@ int main(int argc, char **argv)
     }
 
     op_functions[HALT] = halt;
+    op_functions[SET] = set;
     op_functions[JMP] = jmp;
     op_functions[JT] = jt;
     op_functions[JF] = jf;
@@ -57,6 +60,8 @@ int main(int argc, char **argv)
 
     return 0;
 }
+
+/* Helper functions */
 
 int is_valid_addr(uint16_t addr)
 {
@@ -70,6 +75,48 @@ uint16_t get_reg_val(uint16_t reg)
         exit(1);
     }
     return regs[reg - MIN_REG];
+}
+
+long get_file_num_bytes(FILE *fp)
+{
+    long size;
+    long pos = ftell(fp);
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp) + 1;
+    fseek(fp, pos, SEEK_SET);
+    return size;
+}
+
+void verify_int_or_die(uint16_t i)
+{
+    if (i > MAX_ADDR) {
+        fprintf(stderr, "ERROR: Number is out of range: %u\n"
+            "Numbers are from 0 through %u\n", i, MAX_ADDR);
+        exit(1);
+    }
+}
+
+void verify_reg_or_die(uint16_t addr)
+{
+    if (!is_reg(addr)) {
+        fprintf(stderr, "ERROR: Address expected to be a register, "
+            "but its value is out of range! The accused: 0x%02x\n", addr);
+        exit(1);
+    }
+}
+
+void verify_reg_mem_or_die_and_get_val(uint16_t *addr, FILE *fp)
+{
+    if (is_reg(*addr)) {
+        *addr = get_reg_val(*addr);
+    } else if (!is_valid_addr(*addr)) {
+        fprintf(stderr, "ERROR: Address is out of range: %u\n"
+            "Address are from 0 through %u\n", *addr, MAX_ADDR);
+        exit(1);
+    } else if (*addr * 2 >= get_file_num_bytes(fp)) {
+        fprintf(stderr, "Invalid Address! Address is beyond file!\n");
+        exit (1);
+    }
 }
 
 void execute_file(FILE *fp)
@@ -95,16 +142,80 @@ void execute_file(FILE *fp)
     }
 }
 
+/* op code implementations */
+
+void not_implemented(enum opcode code) 
+{
+    printf("*** DEBUG: Opcode number %d (%s) not implemented.\n", code, op_to_string(code));
+    exit(0);
+}
+
 void halt(FILE *fp)
 {
     dpf();
     exit(0);
 }
 
-void not_implemented(enum opcode code) 
+void set(FILE *fp)
 {
-    printf("*** DEBUG: Opcode number %d (%s) not implemented.\n", code, op_to_string(code));
-    exit(0);
+    uint16_t reg, val;
+    if (readU16(fp, &reg) == -1 || readU16(fp, &val) == -1) {
+        fprintf(stderr, "No arguments to 'set'!");
+        exit(1);
+    }
+
+    verify_reg_or_die(reg);
+    verify_int_or_die(val);
+
+    dprintf("Setting register %d to 0x%02x |%c|\n", reg - MIN_REG,
+        val, isprint(val) ? val : '.');
+
+    regs[reg - MIN_REG] = val;
+}
+
+void jmp(FILE *fp)
+{
+    uint16_t addr;
+    if (readU16(fp, &addr) == -1) {
+        fprintf(stderr, "No argument to 'jmp'!");
+        exit(1);
+    }
+    verify_reg_mem_or_die_and_get_val(&addr, fp);
+    fseek(fp, addr * 2, SEEK_SET);
+}
+
+void jt(FILE *fp)
+{
+    uint16_t boolean, addr;
+    if (readU16(fp, &boolean) == -1 || readU16(fp, &addr) == -1) {
+        fprintf(stderr, "No arguments to 'jt'!");
+        exit(1);
+    }
+    verify_reg_mem_or_die_and_get_val(&boolean, fp);
+    verify_reg_mem_or_die_and_get_val(&addr, fp);
+
+    dprintf("boolean val: '%c'\tjump addr: %u\n", boolean != 0 ? 'T' : 'F', addr);
+    dprintf("current word-wise file offset: %ld\n", ftell(fp) / 2 - 3);
+
+    if (boolean)
+        fseek(fp, addr * 2, SEEK_SET);
+}
+
+void jf(FILE *fp)
+{
+    uint16_t boolean, addr;
+    if (readU16(fp, &boolean) == -1 || readU16(fp, &addr) == -1) {
+        fprintf(stderr, "No arguments to 'jf'!");
+        exit(1);
+    }
+    verify_reg_mem_or_die_and_get_val(&boolean, fp);
+    verify_reg_mem_or_die_and_get_val(&addr, fp);
+    
+    dprintf("boolean val: '%c'\tjump addr: %u\n", boolean != 0 ? 'T' : 'F', addr);
+    dprintf("current word-wise file offset: %ld\n", ftell(fp) / 2 - 3);
+
+    if (!boolean)
+        fseek(fp, addr * 2, SEEK_SET);
 }
 
 void out(FILE *fp)
@@ -122,71 +233,3 @@ void noop(FILE *fp)
     dpf();
 }
 
-long get_file_num_bytes(FILE *fp)
-{
-    long size;
-    long pos = ftell(fp);
-    fseek(fp, 0, SEEK_END);
-    size = ftell(fp) + 1;
-    fseek(fp, pos, SEEK_SET);
-    return size;
-}
-
-void check_arg(uint16_t *addr, FILE *fp)
-{
-    if (is_reg(*addr)) {
-        *addr = get_reg_val(*addr);
-    } else if (!is_valid_addr(*addr)) {
-        fprintf(stderr, "ERROR: Address is out of range: %u\n"
-            "Address are from 0 through %u\n", *addr, MAX_ADDR);
-        exit(1);
-    } else if (*addr * 2 >= get_file_num_bytes(fp)) {
-        fprintf(stderr, "Invalid Address! Address is beyond file!\n");
-        exit (1);
-    }
-}
-
-void jmp(FILE *fp)
-{
-    uint16_t addr;
-    if (readU16(fp, &addr) == -1) {
-        fprintf(stderr, "No argument to 'jmp'!");
-        exit(1);
-    }
-    check_arg(&addr, fp);
-    fseek(fp, addr * 2, SEEK_SET);
-}
-
-void jt(FILE *fp)
-{
-    uint16_t boolean, addr;
-    if (readU16(fp, &boolean) == -1 || readU16(fp, &addr) == -1) {
-        fprintf(stderr, "No arguments to 'jt'!");
-        exit(1);
-    }
-    check_arg(&boolean, fp);
-    check_arg(&addr, fp);
-
-    dprintf("boolean val: '%c'\tjump addr: %u\n", boolean != 0 ? 'T' : 'F', addr);
-    dprintf("current word-wise file offset: %ld\n", ftell(fp) / 2 - 3);
-
-    if (boolean)
-        fseek(fp, addr * 2, SEEK_SET);
-}
-
-void jf(FILE *fp)
-{
-    uint16_t boolean, addr;
-    if (readU16(fp, &boolean) == -1 || readU16(fp, &addr) == -1) {
-        fprintf(stderr, "No arguments to 'jf'!");
-        exit(1);
-    }
-    check_arg(&boolean, fp);
-    check_arg(&addr, fp);
-    
-    dprintf("boolean val: '%c'\tjump addr: %u\n", boolean != 0 ? 'T' : 'F', addr);
-    dprintf("current word-wise file offset: %ld\n", ftell(fp) / 2 - 3);
-
-    if (!boolean)
-        fseek(fp, addr * 2, SEEK_SET);
-}
