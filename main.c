@@ -4,44 +4,18 @@
 #include <stdint.h>
 #include <endian.h>
 #include <inttypes.h>
+#include "arch.h"
+
+#define MAX_ADDR MAX_INT
+#define REG_NUM  8
 
 #ifdef DEBUG
-#define dprintf(f, ...) printf("\n>>> DEBUG: "); printf(f, __VA_ARGS__)
+    #define dprintf(f, ...) printf("\n>>> DEBUG: "); printf(f, __VA_ARGS__)
 #else
-#define dprintf(f, ...)
+    #define dprintf(f, ...)
 #endif
 
-#define MAX_ADDR 32767
-#define MIN_REG 32768
-#define MAX_REG 32775
-
-enum opcode {
-    HALT = 0,
-    SET,
-    PUSH,
-    POP,
-    EQ,
-    GT,
-    JMP,
-    JT,
-    JF,
-    ADD,
-    MULT,
-    MOD,
-    AND,
-    OR,
-    NOT,
-    RMEM,
-    WMEM,
-    CALL,
-    RET,
-    OUT,
-    IN,
-    NOOP,
-    NUM_OP_CODES
-};
-
-uint16_t regs[8] = {0};
+uint16_t regs[REG_NUM] = {0};
 
 void (*op_functions[NUM_OP_CODES])(FILE *) = {0};
 
@@ -56,8 +30,8 @@ void noop(FILE *fp);
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        printf("Usage: $0 <exe>\n");
-        return -1;
+        printf("Usage: %s <exe>\n", argv[0]);
+        return 1;
     }
 
     FILE *fp;
@@ -81,30 +55,13 @@ int is_valid_addr(uint16_t addr)
     return addr <= MAX_ADDR;
 }
 
-int is_reg(uint16_t addr)
-{
-    return addr >= MIN_REG && addr <= MAX_REG;
-}
-
 uint16_t get_reg_val(uint16_t reg)
 {
     if (!is_reg(reg)) {
-        fprintf(stderr, "INTERNAL ERROR!Attempting to read a register which doesn't exist!\n");
+        fprintf(stderr, "INTERNAL ERROR: Attempting to read a register which doesn't exist!\n");
         exit(1);
     }
     return regs[reg - MIN_REG];
-}
-
-int readU16(FILE *fp, uint16_t *ret)
-{
-    uint16_t n;
-    size_t i;
-
-    if ((i = fread(&n, sizeof n, 1, fp)) != 1)
-        return -1;
-
-    *ret = le16toh(n);
-    return 0;
 }
 
 void execute_file(FILE *fp)
@@ -127,38 +84,6 @@ void execute_file(FILE *fp)
     } else {
         perror("ERROR: Error reading!");
         exit(1);
-    }
-}
-
-const char *op_to_string(enum opcode op)
-{
-    switch (op) {
-        case HALT: return "halt";
-        case SET: return "set";
-        case PUSH: return "push";
-        case POP: return "pop";
-        case EQ: return "eq";
-        case GT: return "gt";
-        case JMP: return "jmp";
-        case JT: return "jt";
-        case JF: return "jf";
-        case ADD: return "add";
-        case MULT: return "mult";
-        case MOD: return "mod";
-        case AND: return "and";
-        case OR: return "or";
-        case NOT: return "not";
-        case RMEM: return "rmem";
-        case WMEM: return "wmem";
-        case CALL: return "call";
-        case RET: return "ret";
-        case OUT: return "out";
-        case IN: return "in";
-        case NOOP: return "noop";
-        default:
-            fprintf(stderr, "INTERNAL ERROR in %s! Unrecognized opcode: %d\n",
-                __func__, op);
-            exit(1);
     }
 }
 

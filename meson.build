@@ -1,3 +1,3 @@
 project('Synacore Runner', 'c')
-executable('syn-run', sources : ['main.c'])
+executable('syn-run', sources : ['main.c', 'arch.c'])
 
