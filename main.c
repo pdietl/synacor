@@ -20,6 +20,28 @@
     #define dpf()
 #endif
 
+#define READ1(var) \
+    uint16_t var; \
+    if (readU16(fp, &var)) { \
+        fprintf(stderr, "Not enough arguments to op '%s'!", __func__); \
+        exit(1); \
+    }
+
+#define READ2(var1, var2) \
+    uint16_t var1, var2; \
+    if (readU16(fp, &var1) == -1 || readU16(fp, &var2) == -1) { \
+        fprintf(stderr, "Not enough arguments to op '%s'!", __func__); \
+        exit(1); \
+    }
+
+#define READ3(var1, var2, var3) \
+    uint16_t var1, var2, var3; \
+    if (readU16(fp, &var1) == -1 || readU16(fp, &var2) == -1 || \
+        readU16(fp, &var3) == -1 ) { \
+        fprintf(stderr, "Not enough arguments to op '%s'!", __func__); \
+        exit(1); \
+    }
+
 uint16_t regs[REG_NUM] = {0};
 
 void (*op_functions[NUM_OP_CODES])(FILE *) = {0};
@@ -29,9 +51,11 @@ void not_implemented(enum opcode);
 
 void halt(FILE *fp);
 void set(FILE *fp);
+void eq(FILE *fp);
 void jmp(FILE *fp);
 void jt(FILE *fp);
 void jf(FILE *fp);
+void add(FILE *fp);
 void out(FILE *fp);
 void noop(FILE *fp);
 
@@ -50,9 +74,11 @@ int main(int argc, char **argv)
 
     op_functions[HALT] = halt;
     op_functions[SET] = set;
+    op_functions[EQ] = eq;
     op_functions[JMP] = jmp;
     op_functions[JT] = jt;
     op_functions[JF] = jf;
+    op_functions[ADD] = add;
     op_functions[OUT] = out;
     op_functions[NOOP] = noop;
     
@@ -105,7 +131,7 @@ void verify_reg_or_die(uint16_t addr)
     }
 }
 
-void verify_reg_mem_or_die_and_get_val(uint16_t *addr, FILE *fp)
+void verify_reg_or_int_and_get_val_or_die(uint16_t *addr, FILE *fp)
 {
     if (is_reg(*addr)) {
         *addr = get_reg_val(*addr);
@@ -115,7 +141,7 @@ void verify_reg_mem_or_die_and_get_val(uint16_t *addr, FILE *fp)
         exit(1);
     } else if (*addr * 2 >= get_file_num_bytes(fp)) {
         fprintf(stderr, "Invalid Address! Address is beyond file!\n");
-        exit (1);
+        exit(1);
     }
 }
 
@@ -146,7 +172,7 @@ void execute_file(FILE *fp)
 
 void not_implemented(enum opcode code) 
 {
-    printf("*** DEBUG: Opcode number %d (%s) not implemented.\n", code, op_to_string(code));
+    dprintf("Opcode number %d (%s) not implemented.\n", code, op_to_string(code));
     exit(0);
 }
 
@@ -158,11 +184,7 @@ void halt(FILE *fp)
 
 void set(FILE *fp)
 {
-    uint16_t reg, val;
-    if (readU16(fp, &reg) == -1 || readU16(fp, &val) == -1) {
-        fprintf(stderr, "No arguments to 'set'!");
-        exit(1);
-    }
+    READ2(reg, val)
 
     verify_reg_or_die(reg);
     verify_int_or_die(val);
@@ -173,26 +195,38 @@ void set(FILE *fp)
     regs[reg - MIN_REG] = val;
 }
 
+void eq(FILE *fp)
+{
+    READ3(dest_reg, val1, val2)
+    
+    verify_reg_or_die(dest_reg);
+    verify_reg_or_int_and_get_val_or_die(&val1, fp);
+    verify_reg_or_int_and_get_val_or_die(&val2, fp);
+
+    dprintf("val1: 0x%02x, val2: 0x%02x\n", val1, val2);
+
+    if (val1 == val2) {
+        dprintf("Values equal. Setting reg %d to 1\n", dest_reg - MIN_REG);
+        regs[dest_reg - MIN_REG] = 1;
+    } else {
+        dprintf("Values NOT equal. Setting reg %d to 0\n", dest_reg - MIN_REG);
+        regs[dest_reg - MIN_REG] = 0;
+    }
+}
+
 void jmp(FILE *fp)
 {
-    uint16_t addr;
-    if (readU16(fp, &addr) == -1) {
-        fprintf(stderr, "No argument to 'jmp'!");
-        exit(1);
-    }
-    verify_reg_mem_or_die_and_get_val(&addr, fp);
+    READ1(addr)
+    verify_reg_or_int_and_get_val_or_die(&addr, fp);
     fseek(fp, addr * 2, SEEK_SET);
 }
 
 void jt(FILE *fp)
 {
-    uint16_t boolean, addr;
-    if (readU16(fp, &boolean) == -1 || readU16(fp, &addr) == -1) {
-        fprintf(stderr, "No arguments to 'jt'!");
-        exit(1);
-    }
-    verify_reg_mem_or_die_and_get_val(&boolean, fp);
-    verify_reg_mem_or_die_and_get_val(&addr, fp);
+    READ2(boolean, addr)
+    
+    verify_reg_or_int_and_get_val_or_die(&boolean, fp);
+    verify_reg_or_int_and_get_val_or_die(&addr, fp);
 
     dprintf("boolean val: '%c'\tjump addr: %u\n", boolean != 0 ? 'T' : 'F', addr);
     dprintf("current word-wise file offset: %ld\n", ftell(fp) / 2 - 3);
@@ -203,13 +237,10 @@ void jt(FILE *fp)
 
 void jf(FILE *fp)
 {
-    uint16_t boolean, addr;
-    if (readU16(fp, &boolean) == -1 || readU16(fp, &addr) == -1) {
-        fprintf(stderr, "No arguments to 'jf'!");
-        exit(1);
-    }
-    verify_reg_mem_or_die_and_get_val(&boolean, fp);
-    verify_reg_mem_or_die_and_get_val(&addr, fp);
+    READ2(boolean, addr)
+    
+    verify_reg_or_int_and_get_val_or_die(&boolean, fp);
+    verify_reg_or_int_and_get_val_or_die(&addr, fp);
     
     dprintf("boolean val: '%c'\tjump addr: %u\n", boolean != 0 ? 'T' : 'F', addr);
     dprintf("current word-wise file offset: %ld\n", ftell(fp) / 2 - 3);
@@ -218,13 +249,25 @@ void jf(FILE *fp)
         fseek(fp, addr * 2, SEEK_SET);
 }
 
+void add(FILE *fp)
+{
+    READ3(dest_reg, addend1, addend2)
+
+    verify_reg_or_die(dest_reg);
+    verify_reg_or_int_and_get_val_or_die(&addend1, fp);
+    verify_reg_or_int_and_get_val_or_die(&addend2, fp);
+    
+    uint16_t sum = (addend1 + addend2) % (MAX_INT + 1);
+
+    dprintf("Setting register %d to (0x%02x + 0x%02x) %% MAX_INT+1 = 0x%02x\n", dest_reg - MIN_REG,
+        addend1, addend2, sum);
+
+    regs[dest_reg - MIN_REG] = sum;
+}
+
 void out(FILE *fp)
 {
-    uint16_t ch;
-    if (readU16(fp, &ch) == -1) {
-        fprintf(stderr, "No argument to 'out'!");
-        exit(1);
-    }
+    READ1(ch)
     putchar(ch);
 }
 
