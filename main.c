@@ -470,6 +470,7 @@ void ret()
 void out()
 {
     READ1(ch)
+    verify_reg_or_int_and_get_val_or_die(&ch);
     putchar(ch);
 }
 
