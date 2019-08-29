@@ -97,7 +97,6 @@ void (*op_functions[NUM_OP_CODES])() = {
 };
 
 void execute_file(void);
-void not_implemented(enum opcode);
 
 int main(int argc, char **argv)
 {
@@ -141,7 +140,7 @@ uint16_t get_reg_val(uint16_t reg)
         fprintf(stderr, "INTERNAL ERROR: Attempting to read a register which doesn't exist!\n");
         exit(1);
     }
-    return regs[reg - MIN_REG];
+    return regs[addr_to_reg_num(reg)];
 }
 
 void verify_int_or_die(uint16_t i)
@@ -179,9 +178,6 @@ void execute_file()
             "0 through %u. Offending op code: %u\n", NUM_OP_CODES - 1, op);
             exit(1);
         }
-        if (op_functions[op] == 0) {
-            not_implemented(op);
-        }
         op_functions[op]();
     }
 
@@ -194,12 +190,6 @@ void execute_file()
 }
 
 /* op code implementations */
-
-void not_implemented(enum opcode code) 
-{
-    dprintf("Opcode number %d (%s) not implemented.\n", code, op_to_string(code));
-    exit(0);
-}
 
 void halt()
 {
@@ -217,7 +207,7 @@ void set()
     dprintf("Setting register %d to 0x%02x |%c|\n", reg - MIN_REG,
         val, isprint(val) ? val : '.');
 
-    regs[reg - MIN_REG] = val;
+    regs[addr_to_reg_num(reg)] = val;
 }
 
 void push()
@@ -238,7 +228,7 @@ void pop()
         exit(1);
     }
 
-    regs[dest_reg - MIN_REG] = s_top(prog_stack);
+    regs[addr_to_reg_num(dest_reg)] = s_top(prog_stack);
     s_pop(prog_stack);
 }
 
@@ -254,10 +244,10 @@ void eq()
 
     if (val1 == val2) {
         dprintf("Values equal. Setting reg %d to 1\n", dest_reg - MIN_REG);
-        regs[dest_reg - MIN_REG] = 1;
+        regs[addr_to_reg_num(dest_reg)] = 1;
     } else {
         dprintf("Values NOT equal. Setting reg %d to 0\n", dest_reg - MIN_REG);
-        regs[dest_reg - MIN_REG] = 0;
+        regs[addr_to_reg_num(dest_reg)] = 0;
     }
 }
 
@@ -273,10 +263,10 @@ void gt()
 
     if (val1 > val2) {
         dprintf("val 1 > val2. Setting reg %d to 1\n", dest_reg - MIN_REG);
-        regs[dest_reg - MIN_REG] = 1;
+        regs[addr_to_reg_num(dest_reg)] = 1;
     } else {
         dprintf("val 1 is <= val2. Setting reg %d to 0\n", dest_reg - MIN_REG);
-        regs[dest_reg - MIN_REG] = 0;
+        regs[addr_to_reg_num(dest_reg)] = 0;
     }
 }
 
@@ -332,7 +322,7 @@ void add()
     dprintf("Setting register %d to (0x%02x + 0x%02x) %% MAX_INT+1 = 0x%02x\n", dest_reg - MIN_REG,
         addend1, addend2, sum);
 
-    regs[dest_reg - MIN_REG] = sum;
+    regs[addr_to_reg_num(dest_reg)] = sum;
 }
 
 void mult()
@@ -348,7 +338,7 @@ void mult()
     dprintf("Setting register %d to (0x%02x * 0x%02x) %% MAX_INT+1 = 0x%02x\n", dest_reg - MIN_REG,
         factor1, factor2, product);
 
-    regs[dest_reg - MIN_REG] = product;
+    regs[addr_to_reg_num(dest_reg)] = product;
 }
 
 void mod()
@@ -364,7 +354,7 @@ void mod()
     dprintf("Setting register %d to (0x%02x %% 0x%02x) = 0x%02x\n", dest_reg - MIN_REG,
         val1, val2, res);
 
-    regs[dest_reg - MIN_REG] = res;
+    regs[addr_to_reg_num(dest_reg)] = res;
 }
 
 void and()
@@ -380,7 +370,7 @@ void and()
     dprintf("Setting register %d to (0x%02x & 0x%02x) = 0x%02x\n", dest_reg - MIN_REG,
         val1, val2, res);
 
-    regs[dest_reg - MIN_REG] = res;
+    regs[addr_to_reg_num(dest_reg)] = res;
 }
 
 void or()
@@ -396,7 +386,7 @@ void or()
     dprintf("Setting register %d to (0x%02x | 0x%02x) = 0x%02x\n", dest_reg - MIN_REG,
         val1, val2, res);
 
-    regs[dest_reg - MIN_REG] = res;
+    regs[addr_to_reg_num(dest_reg)] = res;
 }
 
 void not()
@@ -411,7 +401,7 @@ void not()
     dprintf("Setting register %d to (~0x%02x %% MAX_INT+1) = 0x%02x\n", dest_reg - MIN_REG,
         val1, res);
 
-    regs[dest_reg - MIN_REG] = res;
+    regs[addr_to_reg_num(dest_reg)] = res;
 }
 
 void rmem()
@@ -426,7 +416,7 @@ void rmem()
     dprintf("Setting register %d to value of mem location (0x%02x) = 0x%02x\n", dest_reg - MIN_REG,
         addr, res);
 
-    regs[dest_reg - MIN_REG] = res;
+    regs[addr_to_reg_num(dest_reg)] = res;
 }
 
 void wmem()
@@ -479,7 +469,7 @@ void in()
     READ1(reg)
     verify_reg_or_die(reg);
 
-    regs[reg - MIN_REG] = getchar();
+    regs[addr_to_reg_num(reg)] = getchar();
 }
 
 void noop()
